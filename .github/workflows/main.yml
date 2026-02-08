@@ -13,7 +13,6 @@ jobs:
           - { os: windows-latest, rid: win-x64, name: doticf-win-x64.exe }
           - { os: windows-latest, rid: win-arm64, name: doticf-win-arm64.exe }
           - { os: ubuntu-latest,  rid: linux-x64, name: doticf-linux-x64 }
-          - { os: ubuntu-latest,  rid: linux-arm64, name: doticf-linux-arm64 }
           - { os: macos-latest,   rid: osx-universal, name: doticf-osx-universal }
 
     runs-on: ${{ matrix.os }}
