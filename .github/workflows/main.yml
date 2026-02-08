@@ -1,0 +1,59 @@
+name: NativeAOT Publish
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64, name: doticf-win-x64.exe }
+          - { os: windows-latest, rid: win-arm64, name: doticf-win-arm64.exe }
+          - { os: ubuntu-latest,  rid: linux-x64, name: doticf-linux-x64 }
+          - { os: ubuntu-latest,  rid: linux-arm64, name: doticf-linux-arm64 }
+          - { os: macos-latest,   rid: osx-universal, name: doticf-osx-universal }
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Linux AOT 必须安装的依赖
+      - name: Install Linux Build Tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      # 特殊处理 macOS Universal (x64 + arm64 合体)
+      - name: Build macOS Universal
+        if: matrix.rid == 'osx-universal'
+        run: |
+          dotnet publish -c Release -r osx-x64 --self-contained
+          dotnet publish -c Release -r osx-arm64 --self-contained
+          lipo -create bin/Release/net10.0/osx-x64/publish/doticf bin/Release/net10.0/osx-arm64/publish/doticf -output doticf-osx-universal
+          strip doticf-osx-universal
+          codesign --force --sign - doticf-osx-universal
+
+      # 编译 Windows/Linux
+      - name: Build Other RIDs
+        if: matrix.rid != 'osx-universal'
+        run: |
+          dotnet publish -c Release -r ${{ matrix.rid }} --self-contained -o ./publish_out
+          mv ./publish_out/doticf${{ contains(matrix.rid, 'win') && '.exe' || '' }} ./${{ matrix.name }}
+
+      # 进一步剔除 Linux 符号
+      - name: Strip Linux Binary
+        if: runner.os == 'Linux'
+        run: strip ${{ matrix.name }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.name }}
