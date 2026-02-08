@@ -32,13 +32,13 @@ jobs:
 
       # 特殊处理 macOS Universal (x64 + arm64 合体)
       - name: Build macOS Universal
-        if: matrix.rid == 'osx-universal'
-        run: |
-          dotnet publish -c Release -r osx-x64 --self-contained
-          dotnet publish -c Release -r osx-arm64 --self-contained
-          lipo -create bin/Release/net10.0/osx-x64/publish/doticf bin/Release/net10.0/osx-arm64/publish/doticf -output doticf-osx-universal
-          strip doticf-osx-universal
-          codesign --force --sign - doticf-osx-universal
+          if: matrix.rid == 'osx-universal'
+          run: |
+            dotnet publish doticf.csproj -c Release -r osx-x64 --self-contained -o ./out_x64
+            dotnet publish doticf.csproj -c Release -r osx-arm64 --self-contained -o ./out_arm64
+            lipo -create ./out_x64/doticf ./out_arm64/doticf -output ${{ matrix.name }}
+            strip ${{ matrix.name }}
+            codesign --force --sign - ${{ matrix.name }}
 
       # 编译 Windows/Linux
       - name: Build Other RIDs
