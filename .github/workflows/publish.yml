@@ -1,0 +1,86 @@
+name: NativeAOT Multi-Platform Build
+
+on:
+  push:
+    branches: [ main ] # 或者改为 tags: [ 'v*' ] 触发正式发布
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Windows x64
+          - os: windows-latest
+            rid: win-x64
+            suffix: .exe
+          # Windows ARM64
+          - os: windows-latest
+            rid: win-arm64
+            suffix: .exe
+          # Linux x64
+          - os: ubuntu-latest
+            rid: linux-x64
+            suffix: ""
+          # Linux ARM64 (需要交叉编译器，Ubuntu 默认自带)
+          - os: ubuntu-latest
+            rid: linux-arm64
+            suffix: ""
+          # macOS Universal (会在 macOS 机器上分别编译再合并)
+          - os: macos-latest
+            rid: osx-universal
+            suffix: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Linux 需要安装额外的链接器
+      - name: Install Linux Dependencies
+        if: startsWith(matrix.rid, 'linux')
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      # 特殊处理：macOS Universal 二进制生成
+      - name: Build macOS Universal
+        if: matrix.rid == 'osx-universal'
+        run: |
+          dotnet publish -c Release -r osx-x64 --self-contained
+          dotnet publish -c Release -r osx-arm64 --self-contained
+          mkdir -p publish
+          lipo -create \
+            bin/Release/net10.0/osx-x64/publish/doticf \
+            bin/Release/net10.0/osx-arm64/publish/doticf \
+            -output publish/doticf
+          strip publish/doticf
+          codesign --force --sign - publish/doticf
+
+      # 普通编译流程
+      - name: Build Standard RID
+        if: matrix.rid != 'osx-universal'
+        run: |
+          dotnet publish -c Release -r ${{ matrix.rid }} --self-contained -o publish
+
+      # 瘦身步骤：Windows 移除符号，Linux/macOS 执行 strip
+      - name: Post-Build Slimming (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          # Windows NativeAOT 默认不包含符号在 exe 中，但可以确保 PDB 不被打包
+          Remove-Item -Path "publish/*.pdb" -ErrorAction Ignore
+
+      - name: Post-Build Slimming (Linux)
+        if: startsWith(matrix.rid, 'linux')
+        run: |
+          strip publish/doticf
+
+      # 上传产物
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: doticf-${{ matrix.rid }}
+          path: publish/doticf${{ matrix.suffix }}
