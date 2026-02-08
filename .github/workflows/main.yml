@@ -30,22 +30,24 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
 
-      # 特殊处理 macOS Universal (x64 + arm64 合体)
+      # 特殊处理 macOS Universal (修正缩进)
       - name: Build macOS Universal
-          if: matrix.rid == 'osx-universal'
-          run: |
-            dotnet publish doticf.csproj -c Release -r osx-x64 --self-contained -o ./out_x64
-            dotnet publish doticf.csproj -c Release -r osx-arm64 --self-contained -o ./out_arm64
-            lipo -create ./out_x64/doticf ./out_arm64/doticf -output ${{ matrix.name }}
-            strip ${{ matrix.name }}
-            codesign --force --sign - ${{ matrix.name }}
+        if: matrix.rid == 'osx-universal'
+        run: |
+          dotnet publish -c Release -r osx-x64 --self-contained -o ./out_x64
+          dotnet publish -c Release -r osx-arm64 --self-contained -o ./out_arm64
+          lipo -create ./out_x64/doticf ./out_arm64/doticf -output ${{ matrix.name }}
+          strip ${{ matrix.name }}
+          codesign --force --sign - ${{ matrix.name }}
+          ls -lh ${{ matrix.name }}
 
       # 编译 Windows/Linux
       - name: Build Other RIDs
         if: matrix.rid != 'osx-universal'
         run: |
           dotnet publish -c Release -r ${{ matrix.rid }} --self-contained -o ./publish_out
-          mv ./publish_out/doticf${{ contains(matrix.rid, 'win') && '.exe' || '' }} ./${{ matrix.name }}
+          # 使用通配符移动文件，防止项目名大小写导致 mv 失败
+          mv ./publish_out/doticf* ./${{ matrix.name }}
 
       # 进一步剔除 Linux 符号
       - name: Strip Linux Binary
@@ -57,3 +59,4 @@ jobs:
         with:
           name: ${{ matrix.name }}
           path: ${{ matrix.name }}
+          if-no-files-found: error
